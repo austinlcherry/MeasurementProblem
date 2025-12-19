@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Geometric Collapse: Dual-Channel Bell Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', monospace; color: white; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 380px;
+            background: rgba(10, 10, 10, 0.95);
+            padding: 20px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            pointer-events: auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            user-select: none;
+            max-height: 95vh;
+            overflow-y: auto;
+        }
+
+        h1 { font-size: 16px; margin-top: 0; color: #00ffcc; text-transform: uppercase; border-bottom: 1px solid #444; padding-bottom: 10px; letter-spacing: 1px; }
+        .control-group { margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; }
+        label { display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;}
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #00ffcc; }
+        select { width: 100%; background: #222; color: white; border: 1px solid #444; padding: 5px; font-family: inherit; margin-bottom: 5px; }
+        
+        .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px; }
+        .value { color: #fff; font-weight: bold; }
+
+        /* DETECTOR STATUS */
+        .detector-status { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; background: #111; padding: 5px; border-radius: 4px; border: 1px solid #333;}
+        .det-name { font-weight: bold; width: 40px; font-size: 12px; }
+        .channel-lights { display: flex; gap: 5px; }
+        .det-light { width: 12px; height: 12px; border-radius: 50%; background: #333; transition: background 0.1s; box-shadow: 0 0 5px #000; display: inline-block;}
+        
+        .det-light.plus { background: #333; border: 1px solid #00ffcc; }
+        .det-light.plus.on { background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
+        
+        .det-light.minus { background: #333; border: 1px solid #0088ff; }
+        .det-light.minus.on { background: #0088ff; box-shadow: 0 0 10px #0088ff; }
+        
+        #coincidence-display { 
+            text-align: center; margin-top: 10px; padding: 8px; background: #111; 
+            border: 1px solid #333; color: #555; font-weight: bold; font-size: 12px;
+        }
+        #coincidence-display.corr { color: #00ffcc; border-color: #00ffcc; background: #002211; }
+        #coincidence-display.anti { color: #ff3333; border-color: #ff3333; background: #220000; }
+
+        /* GRAPH */
+        #graph-canvas { width: 100%; height: 140px; background: #111; border: 1px solid #333; margin-top: 5px; }
+
+        button {
+            width: 100%; padding: 10px; background: #222; border: 1px solid #444; color: #00ffcc; 
+            font-family: inherit; font-weight: bold; cursor: pointer; margin-top: 5px; text-transform: uppercase;
+            transition: background 0.2s;
+        }
+        button:hover { background: #333; }
+        button.active { background: #004433; border-color: #00ffcc; color: white; }
+
+        .annotation { position: absolute; bottom: 20px; right: 20px; text-align: right; color: #444; font-size: 10px; pointer-events: none;}
+        
+        #dataOutput { width: 95%; background: #111; color: #888; border: 1px solid #444; padding: 5px; font-family: monospace; font-size: 10px; margin-top: 10px; resize: vertical; white-space: pre;}
+        
+        #chsh-result { margin-top: 10px; padding: 10px; border: 1px solid #444; background: #000; font-family: monospace; font-size: 11px; color: #aaa; display: none; }
+        .pass { color: #00ffcc; font-weight: bold; }
+        .fail { color: #ff3333; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <h1>Dual-Channel Bell Test</h1>
+    
+    <!-- MATERIAL CONFIGURATION -->
+    <div class="control-group">
+        <label>Particle Source (Geometry)</label>
+        <select id="particleGeo">
+            <option value="s">S-Block (Sphere - Isotropic)</option>
+            <option value="p" selected>P-Block (Peanut - Dipole)</option>
+            <option value="d">D-Block (Clover - Quadrupole)</option>
+        </select>
+
+        <label>Detector Material (Lattice)</label>
+        <select id="detectorGeo">
+            <option value="s">S-Block (Sphere)</option>
+            <option value="p" selected>P-Block (Peanut)</option>
+            <option value="d">D-Block (Clover)</option>
+        </select>
+    </div>
+
+    <!-- DETECTOR CONTROLS -->
+    <div class="control-group">
+        <label>Alice (Left)</label>
+        <div class="detector-status">
+            <div style="flex-grow:1">
+                <input type="range" id="angleA" min="0" max="180" step="1" value="0">
+                <div class="stat-row"><span>Angle α:</span> <span id="valA" class="value">0°</span></div>
+            </div>
+            <div class="channel-lights" style="margin-left: 10px;">
+                <div id="lightA_plus" class="det-light plus" title="+1 Channel"></div>
+                <div id="lightA_minus" class="det-light minus" title="-1 Channel"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>Bob (Right)</label>
+        <div class="detector-status">
+            <div style="flex-grow:1">
+                <input type="range" id="angleB" min="0" max="180" step="1" value="45">
+                <div class="stat-row"><span>Angle β:</span> <span id="valB" class="value">45°</span></div>
+            </div>
+            <div class="channel-lights" style="margin-left: 10px;">
+                <div id="lightB_plus" class="det-light plus" title="+1 Channel"></div>
+                <div id="lightB_minus" class="det-light minus" title="-1 Channel"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="coincidence-display">NO EVENT</div>
+
+    <!-- MANUAL CONTROL -->
+    <div class="control-group">
+        <label>Manual Control</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <button id="fireBtn" style="margin-top:0;">Fire Pair</button>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+                <label style="display:flex; align-items:center; margin:0; cursor:pointer; font-size:11px; color:#aaa;">
+                    <input type="checkbox" id="autoFire" checked style="width:auto; margin-right:5px; accent-color:#00ffcc;"> Auto-Repeat
+                </label>
+                <label style="display:flex; align-items:center; margin:0; cursor:pointer; font-size:11px; color:#aaa;">
+                    <input type="checkbox" id="randomizePairs" checked style="width:auto; margin-right:5px; accent-color:#00ffcc;"> Random Orient
+                </label>
+            </div>
+        </div>
+        <div style="margin-top: 10px; border-top: 1px solid #333; padding-top: 8px;">
+            <label>Source Phase Offset (Relative)</label>
+            <input type="range" id="sourceOffset" min="0" max="180" value="0">
+            <div class="stat-row"><span>Offset:</span> <span id="sourceVal" class="value">0° (Parallel)</span></div>
+        </div>
+        <div style="margin-top: 5px; display: flex; flex-direction: column; gap: 5px;">
+            <label style="display:flex; align-items:center; margin:0; cursor:pointer; font-size:11px; color:#aaa;">
+                <input type="checkbox" id="randomize3D" style="width:auto; margin-right:5px; accent-color:#00ffcc;"> 3D Tumbling (Spin)
+            </label>
+            <div style="border-top: 1px solid #222; padding-top: 5px;">
+                <label>Impact Center Jitter (Spatial)</label>
+                <input type="range" id="jitterSlider" min="0" max="100" value="20">
+                <div class="stat-row"><span>Alignment Error:</span> <span id="jitterVal" class="value">20%</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPERIMENT CONTROLS -->
+    <div class="control-group">
+        <label>Bell/CHSH Experiment</label>
+        
+        <label style="margin-top:5px; color:#00ffcc;">Graph Diagnostic Mode:</label>
+        <select id="graphMode" style="margin-bottom:8px;">
+            <option value="valid">Conditional E (Quantum-like)</option>
+            <option value="all">Unconditional E (Classical Limit)</option>
+            <option value="rates">Singles Rates (No-Signaling Check)</option>
+        </select>
+
+        <div style="display: flex; gap: 5px;">
+            <button id="runBtn" style="width: 50%;">Run Angle Sweep</button>
+            <button id="runCHSH" style="width: 50%; border-color: #ffaa00; color: #ffaa00;">Run CHSH Calc</button>
+        </div>
+        <canvas id="graph-canvas" width="340" height="140"></canvas>
+        <div id="chsh-result"></div>
+    </div>
+
+    <!-- GLOBAL PHYSICS -->
+    <div class="control-group">
+        <label>Detector Threshold (Stiffness)</label>
+        <input type="range" id="stiffnessSlider" min="1" max="99" value="45">
+        <div class="stat-row"><span>Binding Energy:</span> <span id="stiffnessVal" class="value">45%</span></div>
+        
+        <label style="margin-top:10px;">Thermal Noise (Vibration)</label>
+        <input type="range" id="noiseSlider" min="0" max="100" value="15">
+    </div>
+    
+    <textarea id="dataOutput" rows="4" readonly placeholder="Run Simulation to see report..."></textarea>
+
+    <!-- README SECTION -->
+    <div class="control-group" style="border-bottom: none; margin-top: 15px;">
+        <label style="font-size: 11px; color: #00ffcc; cursor: pointer; display: flex; align-items: center;" id="readmeToggle">
+            <span style="margin-right: 5px;">▶</span> ABOUT THIS SIMULATION
+        </label>
+        <div id="readmeContent" style="display:none; font-size: 10px; color: #aaa; margin-top: 8px; line-height: 1.4; border: 1px solid #333; padding: 8px; background: #000;">
+            <p style="margin-bottom: 8px;"><strong style="color:#fff">The Geometric Torque Model:</strong><br>
+            A local, deterministic simulation that reproduces Quantum Mechanics predictions (Malus's Law, Bell Correlations) using classical contact mechanics instead of intrinsic probability.</p>
+            
+            <strong style="color:#fff">PHYSICS MAPPING:</strong>
+            <ul style="padding-left: 12px; margin: 4px 0 8px 0;">
+                <li><strong style="color:#00ffcc">Particle:</strong> Not a point, but a 3D Field Mode (Peanut/P-Orbital). Shape dictates interaction.</li>
+                <li><strong style="color:#00ffcc">Entanglement:</strong> Shared Geometric History. Particles leave the source with identical orientation ($\lambda$). No "spooky action."</li>
+                <li><strong style="color:#00ffcc">Detector:</strong> A Stiff Lattice. It requires a minimum energy transfer to "snap" (click).</li>
+                <li><strong style="color:#00ffcc">Measurement:</strong> Torque Threshold. <br><em>Click = Torque > Stiffness</em>.<br>This creates a "Detection Loophole" (Contextuality).</li>
+                <li><strong style="color:#00ffcc">Impact Jitter:</strong> Spatial misalignment. Real atoms aren't hit perfectly on-center.</li>
+            </ul>
+
+            <p style="margin-top: 10px;"><strong style="color:#fff">THE "WHAT IF" HYPOTHESIS:</strong></p>
+            <ul style="padding-left: 12px; margin: 4px 0 8px 0;">
+                <li><strong style="color:#00ffcc">Superposition is Misalignment:</strong> Particles aren't "two states at once." They are in a single definite orientation that doesn't fit the detector's slots. "Quantumness" is just intermediate orientation.</li>
+                <li><strong style="color:#00ffcc">The "Snap" is Collapse:</strong> Wavefunction collapse isn't magic; it's a phase transition. When torque wins against lattice stiffness, the particle mechanically snaps into a stable well.</li>
+                <li><strong style="color:#00ffcc">QC is Higher Harmonic Analog:</strong> A 50-qubit system isn't in another dimension; it's a 3D standing wave with 50 addressable lobes. Scaling might be limited by spatial "crosstalk" (geometric crowding) rather than abstract math.</li>
+                <li><strong style="color:#00ffcc">Superconductivity is Transparency:</strong> Cold temperatures stop lattice vibration (noise), allowing the particle to slip through without ever transferring torque (resistance). Heat is the enemy of geometric resonance.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="annotation">
+    Left Click + Drag: Rotate<br>
+    Shift + Left Click + Drag: Pan<br>
+    Scroll: Zoom
+</div>
+
+<div id="canvas-container"></div>
+
+<!-- Import Three.js -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- CONFIGURATION ---
+    const config = {
+        particleType: 'p',
+        detectorType: 'p',
+        angleA: 0,
+        angleB: 45,
+        stiffness: 0.45, 
+        noise: 0.15,     
+        isRunning: false,
+        runMode: 'sweep',
+        autoFire: true,
+        randomizePairs: true,
+        sourceOffset: 0, 
+        randomize3D: false,
+        impactJitter: 0.20, // Max spatial offset in units
+        graphMode: 'valid', 
+        separation: 12.0
+    };
+
+    let graphData = [];
+    let chshStep = 0;
+    let chshResults = []; 
+    let simAngle = 0; 
+
+    // --- SCENE SETUP ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 10, 25);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x050505);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0,0,0);
+    controls.listenToKeyEvents(window); 
+    
+    window.addEventListener('keydown', (e) => {
+        if(e.key === 'Shift') controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    });
+    window.addEventListener('keyup', (e) => {
+        if(e.key === 'Shift') controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    });
+
+    const ambientLight = new THREE.AmbientLight(0x404040); 
+    scene.add(ambientLight);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222222, 1.0); 
+    hemiLight.position.set(0, 20, 0);
+    scene.add(hemiLight);
+    const mainLight = new THREE.DirectionalLight(0xffffff, 2.0); 
+    mainLight.position.set(5, 10, 7);
+    scene.add(mainLight);
+
+    // --- OBJECT FACTORY ---
+    function createGeometry(type, isGhost, colorOverride = null) {
+        const group = new THREE.Group();
+        let material;
+        if (isGhost) {
+            material = new THREE.MeshPhysicalMaterial({
+                color: 0x00ffcc, metalness: 0.0, roughness: 0.0,
+                transmission: 0.8, opacity: 0.5, transparent: true,
+                thickness: 0.5, emissive: 0x00ffcc, emissiveIntensity: 0.6,
+                side: THREE.DoubleSide
+            });
+        } else {
+            const col = colorOverride ? colorOverride : 0xffffff;
+            material = new THREE.MeshPhysicalMaterial({
+                color: col, roughness: 0.2, metalness: 0.0, 
+                transmission: 0.1, opacity: 0.95, transparent: true,
+                side: THREE.DoubleSide
+            });
+        }
+
+        if (type === 's') {
+            group.add(new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), material));
+        } else if (type === 'p') {
+            const l1 = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), material); l1.position.y = 1.1; l1.scale.set(0.9, 1.3, 0.9);
+            const l2 = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), material); l2.position.y = -1.1; l2.scale.set(0.9, 1.3, 0.9);
+            group.add(l1); group.add(l2); group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.5, 16), material));
+            if(isGhost) group.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,-2,0), 4, 0x00ffcc, 0.5, 0.3));
+        } else if (type === 'd') {
+            const l1 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 32, 32), material); l1.position.y = 1.0; l1.scale.set(0.7, 1.2, 0.7);
+            const l2 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 32, 32), material); l2.position.y = -1.0; l2.scale.set(0.7, 1.2, 0.7);
+            const l3 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 32, 32), material); l3.position.x = 1.0; l3.scale.set(1.2, 0.7, 0.7);
+            const l4 = new THREE.Mesh(new THREE.SphereGeometry(0.9, 32, 32), material); l4.position.x = -1.0; l4.scale.set(1.2, 0.7, 0.7);
+            group.add(l1); group.add(l2); group.add(l3); group.add(l4);
+            group.add(new THREE.Mesh(new THREE.SphereGeometry(0.4), material));
+        }
+        return group;
+    }
+
+    let detA_Plus, detA_Minus, detB_Plus, detB_Minus, partA, partB;
+    const mountA = new THREE.Group(); mountA.position.set(-config.separation, 0, 0); mountA.lookAt(0,0,0); scene.add(mountA);
+    const mountB = new THREE.Group(); mountB.position.set(config.separation, 0, 0); mountB.lookAt(0,0,0); scene.add(mountB);
+    const pairGroup = new THREE.Group(); scene.add(pairGroup);
+
+    function buildScene() {
+        mountA.clear(); mountB.clear(); pairGroup.clear();
+        detA_Plus = createGeometry(config.detectorType, false, 0xffffff);
+        detA_Minus = createGeometry(config.detectorType, false, 0xffffff);
+        const offset = (config.detectorType === 'd') ? Math.PI/4 : Math.PI/2;
+        detA_Minus.rotation.z = offset;
+        const hubA = new THREE.Group(); hubA.add(detA_Plus); hubA.add(detA_Minus); mountA.add(hubA); mountA.userData.hub = hubA; mountA.userData.plusMesh = detA_Plus; mountA.userData.minusMesh = detA_Minus;
+
+        detB_Plus = createGeometry(config.detectorType, false, 0xffffff);
+        detB_Minus = createGeometry(config.detectorType, false, 0xffffff);
+        detB_Minus.rotation.z = offset;
+        const hubB = new THREE.Group(); hubB.add(detB_Plus); hubB.add(detB_Minus); mountB.add(hubB); mountB.userData.hub = hubB; mountB.userData.plusMesh = detB_Plus; mountB.userData.minusMesh = detB_Minus;
+
+        mountA.add(new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.1, 16, 100), new THREE.MeshBasicMaterial({color:0x666666})));
+        mountB.add(new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.1, 16, 100), new THREE.MeshBasicMaterial({color:0x666666})));
+        partA = createGeometry(config.particleType, true); partB = createGeometry(config.particleType, true);
+        pairGroup.add(partA); pairGroup.add(partB);
+        resetPair();
+    }
+
+    // --- PHYSICS ENGINE ---
+
+    function getLeverage(pObj, dObj, offsetAngle = 0) {
+        const dQuat = dObj.getWorldQuaternion(new THREE.Quaternion());
+        const pAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(pObj.getWorldQuaternion(new THREE.Quaternion())).normalize();
+        const hubUp = new THREE.Vector3(0, 1, 0).applyQuaternion(dQuat).normalize();
+        const hubRight = new THREE.Vector3(1, 0, 0).applyQuaternion(dQuat).normalize(); 
+        const hubDiag = new THREE.Vector3(1, 1, 0).normalize().applyQuaternion(dQuat).normalize();
+        let targetAxis = hubUp;
+        if (offsetAngle !== 0) {
+            if (config.detectorType === 'p') targetAxis = hubRight; 
+            if (config.detectorType === 'd') targetAxis = hubDiag; 
+        }
+        const dot = pAxis.dot(targetAxis);
+        let alignment = 0;
+        if (config.particleType === 'p') alignment = dot * dot;
+        if (config.particleType === 'd') alignment = Math.pow((2 * dot * dot - 1), 2);
+        if (config.particleType === 's') alignment = 0.8;
+        return alignment;
+    }
+
+    function checkDualDetection(pObj, dObj) {
+        // SPATIAL JITTER PHYSICS
+        const localPos = pObj.position.clone().sub(dObj.getWorldPosition(new THREE.Vector3()));
+        const distSq = localPos.y * localPos.y + localPos.z * localPos.z;
+        const width = 1.5; 
+        const spatialCoupling = Math.max(0, Math.min(1, 1 - (distSq / (width * width))));
+
+        const leveragePlus = getLeverage(pObj, dObj, 0);
+        const leverageMinus = getLeverage(pObj, dObj, 1); 
+
+        const noiseA = (Math.random() - 0.5) * config.noise * 2.0;
+        const noiseB = (Math.random() - 0.5) * config.noise * 2.0;
+
+        const sigPlus = Math.max(0, Math.min(1, leveragePlus * spatialCoupling + noiseA));
+        const sigMinus = Math.max(0, Math.min(1, leverageMinus * spatialCoupling + noiseB));
+
+        if (sigPlus >= config.stiffness && sigPlus > sigMinus) return 1;
+        if (sigMinus >= config.stiffness && sigMinus > sigPlus) return -1;
+        return 0; 
+    }
+
+    let flightProgress = 0; 
+    let particleWobbleOffset = 0;
+    let currentJitter = { ay:0, az:0, by:0, bz:0 };
+
+    function resetPair() {
+        if (!partA || !partB) return; 
+        flightProgress = 0;
+        particleWobbleOffset = Math.random() * 10;
+        
+        const rot = new THREE.Euler();
+        if (config.randomize3D) {
+            rot.set(Math.random()*Math.PI, Math.random()*Math.PI*2, Math.random()*Math.PI*2);
+        } else if (config.randomizePairs) {
+            rot.set(Math.random()*Math.PI*2, 0, 0); 
+        } else {
+            rot.set(0,0,0);
+        }
+        partA.rotation.copy(rot); partB.rotation.copy(rot);
+        if (config.sourceOffset !== 0) partB.rotateOnWorldAxis(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(config.sourceOffset));
+
+        currentJitter.ay = (Math.random()-0.5) * config.impactJitter * 10.0;
+        currentJitter.az = (Math.random()-0.5) * config.impactJitter * 10.0;
+        currentJitter.by = (Math.random()-0.5) * config.impactJitter * 10.0;
+        currentJitter.bz = (Math.random()-0.5) * config.impactJitter * 10.0;
+
+        partA.position.set(0, currentJitter.ay, currentJitter.az); 
+        partB.position.set(0, currentJitter.by, currentJitter.bz);
+        
+        resetLights('A'); resetLights('B');
+        set3DColor(mountA.userData.plusMesh, 0xffffff, 0); set3DColor(mountB.userData.plusMesh, 0xffffff, 0);
+        set3DColor(mountA.userData.minusMesh, 0xffffff, 0); set3DColor(mountB.userData.minusMesh, 0xffffff, 0);
+        const disp = document.getElementById('coincidence-display');
+        if(disp) { disp.innerText = "NO EVENT"; disp.className = ""; }
+    }
+
+    function resetLights(side) {
+        const lp = document.getElementById(`light${side}_plus`);
+        const lm = document.getElementById(`light${side}_minus`);
+        if(lp) lp.className = "det-light plus";
+        if(lm) lm.className = "det-light minus";
+    }
+    
+    function set3DColor(meshGroup, hexColor, intensity) {
+        if(!meshGroup) return;
+        meshGroup.traverse(c => {
+            if(c.isMesh) { c.material.emissive.setHex(hexColor); c.material.emissiveIntensity = intensity; }
+        });
+    }
+
+    const runBtn = document.getElementById('runBtn');
+    const chshBtn = document.getElementById('runCHSH');
+    const fireBtn = document.getElementById('fireBtn');
+    const autoFireCheck = document.getElementById('autoFire');
+    const randomizeCheck = document.getElementById('randomizePairs');
+    const sourceOffsetSlider = document.getElementById('sourceOffset');
+    const sourceValSpan = document.getElementById('sourceVal');
+    const randomize3DCheck = document.getElementById('randomize3D');
+    const jitterSlider = document.getElementById('jitterSlider');
+    const jitterValSpan = document.getElementById('jitterVal');
+    const graphModeSel = document.getElementById('graphMode');
+    const dataOutput = document.getElementById('dataOutput');
+    const chshDisplay = document.getElementById('chsh-result');
+
+    fireBtn.addEventListener('click', () => { resetPair(); });
+    autoFireCheck.addEventListener('change', (e) => { config.autoFire = e.target.checked; if(config.autoFire && flightProgress >= 3.0) resetPair(); });
+    randomizeCheck.addEventListener('change', (e) => { config.randomizePairs = e.target.checked; });
+    sourceOffsetSlider.addEventListener('input', (e) => { config.sourceOffset = parseInt(e.target.value); sourceValSpan.innerText = config.sourceOffset + "°"; });
+    jitterSlider.addEventListener('input', (e) => { config.impactJitter = parseInt(e.target.value)/100; jitterValSpan.innerText = e.target.value + "%"; });
+    randomize3DCheck.addEventListener('change', (e) => { config.randomize3D = e.target.checked; });
+    graphModeSel.addEventListener('change', (e) => { config.graphMode = e.target.value; if(graphData.length > 0) drawGraph(); });
+
+    function startRun(mode) {
+        if(config.isRunning) return;
+        config.isRunning = true;
+        config.runMode = mode;
+        if (mode === 'sweep') { 
+            runBtn.classList.add('active'); 
+            runBtn.innerText = "RUNNING SWEEP..."; 
+            graphData = []; 
+            simAngle = 0; 
+        } 
+        else { 
+            chshBtn.classList.add('active'); 
+            chshBtn.innerText = "RUNNING CHSH..."; 
+            chshStep = 0; 
+            chshResults = []; 
+        }
+        flightProgress = 0; document.getElementById('angleB').disabled = true; chshDisplay.style.display = 'none'; resetPair();
+    }
+
+    runBtn.addEventListener('click', () => startRun('sweep'));
+    chshBtn.addEventListener('click', () => startRun('chsh'));
+
+    function updatePhysics() {
+        if (!mountA || !mountB || !partA || !partB) return;
+        const radA = THREE.MathUtils.degToRad(config.angleA);
+        const radB = THREE.MathUtils.degToRad(config.angleB);
+        const detShake = config.noise * 0.3;
+        if (mountA.userData.hub) mountA.userData.hub.rotation.z = -radA + (Math.random()-0.5)*detShake;
+        if (mountB.userData.hub) mountB.userData.hub.rotation.z = radB + (Math.random()-0.5)*detShake;
+
+        if (flightProgress < 1.0) {
+            const speed = config.isRunning ? 0.25 : 0.05; 
+            flightProgress += speed;
+            partA.position.x = THREE.MathUtils.lerp(0, -config.separation, flightProgress);
+            partB.position.x = THREE.MathUtils.lerp(0, config.separation, flightProgress);
+            const wobble = Math.sin((Date.now() / 100) + particleWobbleOffset) * (config.noise * 0.5);
+            partA.rotateX(wobble * 0.1); partB.rotateX(wobble * 0.1);
+        } else if (flightProgress < 2.0) { 
+            flightProgress = 3.0; 
+            const valA = checkDualDetection(partA, mountA.userData.hub);
+            const valB = checkDualDetection(partB, mountB.userData.hub);
+            resetLights('A'); resetLights('B');
+            if(valA === 1) { document.getElementById('lightA_plus').classList.add('on'); set3DColor(mountA.userData.plusMesh, 0x00ffcc, 1.0); }
+            if(valA === -1) { document.getElementById('lightA_minus').classList.add('on'); set3DColor(mountA.userData.minusMesh, 0x0088ff, 1.0); }
+            if(valB === 1) { document.getElementById('lightB_plus').classList.add('on'); set3DColor(mountB.userData.plusMesh, 0x00ffcc, 1.0); }
+            if(valB === -1) { document.getElementById('lightB_minus').classList.add('on'); set3DColor(mountB.userData.minusMesh, 0x0088ff, 1.0); }
+            const disp = document.getElementById('coincidence-display');
+            if (valA !== 0 && valB !== 0) {
+                if (valA === valB) { disp.innerText = `CORRELATED (${valA}, ${valB})`; disp.className = "corr"; } 
+                else { disp.innerText = `ANTI-CORRELATED (${valA}, ${valB})`; disp.className = "anti"; }
+            } else { disp.innerText = "LOSS / NO COINCIDENCE"; disp.className = ""; }
+            if (config.isRunning) { if (config.runMode === 'sweep') runSweepStep(); else runCHSHStep(); } 
+            else if(config.autoFire) setTimeout(resetPair, 1000);
+        }
+    }
+
+    function runSweepStep() {
+        const stats = runBatch(config.angleA, simAngle);
+        graphData.push({ angle: simAngle, stats: stats });
+        drawGraph();
+        simAngle += 5; 
+        if (simAngle > 180) {
+            finishRun();
+            const header = `SIMULATION REPORT (SWEEP)\n-----------------\nGeometry: ${config.particleType.toUpperCase()} on ${config.detectorType.toUpperCase()}\nJitter: ${config.impactJitter}\nStiffness: ${config.stiffness}\nAliceAngle: ${config.angleA}°\n-----------------\n`;
+            let csv = "BobAngle,E_Correlation,ValidPairs,AliceRate,BobRate\n";
+            graphData.forEach(d => { csv += `${d.angle},${d.stats.E_valid.toFixed(4)},${d.stats.valid},${(d.stats.nA/d.stats.total).toFixed(3)},${(d.stats.nB/d.stats.total).toFixed(3)}\n` });
+            dataOutput.value = header + csv;
+        } else { config.angleB = simAngle; document.getElementById('angleB').value = simAngle; setTimeout(resetPair, 30); }
+    }
+
+    function runCHSHStep() {
+        let a1=0, a2=45, b1=22.5, b2=67.5;
+        if(config.particleType === 'd' || config.detectorType === 'd') { a1=0; a2=22.5; b1=11.25; b2=33.75; }
+        let angleA = (chshStep < 2) ? a1 : a2;
+        let angleB = (chshStep % 2 === 0) ? b1 : b2;
+        config.angleA = angleA; config.angleB = angleB;
+        document.getElementById('angleA').value = angleA; document.getElementById('angleB').value = angleB;
+        const stats = runBatch(angleA, angleB);
+        chshResults.push(stats); 
+        chshStep++;
+        if(chshStep > 3) {
+            finishRun();
+            const S_valid = Math.abs(chshResults[0].E_valid - chshResults[1].E_valid + chshResults[2].E_valid + chshResults[3].E_valid);
+            const S_all = Math.abs(chshResults[0].E_all - chshResults[1].E_all + chshResults[2].E_all + chshResults[3].E_all);
+            let res = `E(a1,b1)=${chshResults[0].E_valid.toFixed(3)}\nE(a1,b2)=${chshResults[1].E_valid.toFixed(3)}\nE(a2,b1)=${chshResults[2].E_valid.toFixed(3)}\nE(a2,b2)=${chshResults[3].E_valid.toFixed(3)}\n\nS_valid=${S_valid.toFixed(4)}\nS_all=${S_all.toFixed(4)}`;
+            dataOutput.value = "CHSH REPORT\n-----------\n" + res;
+            chshDisplay.innerHTML = `S_valid = <span class="${S_valid > 2 ? 'pass' : ''}">${S_valid.toFixed(4)}</span>`;
+            chshDisplay.style.display = 'block';
+        } else { setTimeout(resetPair, 100); }
+    }
+
+    function runBatch(degA, degB) {
+        let N_pp=0, N_mm=0, N_pm=0, N_mp=0, nA=0, nB=0;
+        let total = 2500;
+        const savedHubA = mountA.userData.hub.rotation.z;
+        const savedHubB = mountB.userData.hub.rotation.z;
+        for(let i=0; i<total; i++) {
+            let rot = new THREE.Euler();
+            if (config.randomize3D) rot.set(Math.random()*Math.PI, Math.random()*Math.PI*2, Math.random()*Math.PI*2);
+            else rot.set(Math.random()*Math.PI*2, 0, 0); 
+            partA.rotation.copy(rot); partB.rotation.copy(rot);
+            if (config.sourceOffset !== 0) partB.rotateOnWorldAxis(new THREE.Vector3(1,0,0), THREE.MathUtils.degToRad(config.sourceOffset));
+            
+            partA.position.set(0, (Math.random()-0.5)*config.impactJitter*10, (Math.random()-0.5)*config.impactJitter*10);
+            partB.position.set(0, (Math.random()-0.5)*config.impactJitter*10, (Math.random()-0.5)*config.impactJitter*10);
+
+            mountA.userData.hub.rotation.z = -THREE.MathUtils.degToRad(degA) + (Math.random()-0.5)*config.noise*0.3;
+            mountB.userData.hub.rotation.z = THREE.MathUtils.degToRad(degB) + (Math.random()-0.5)*config.noise*0.3;
+            
+            partA.updateMatrixWorld(true); partB.updateMatrixWorld(true);
+            const rA = checkDualDetection(partA, mountA.userData.hub);
+            const rB = checkDualDetection(partB, mountB.userData.hub);
+            if(rA !== 0) nA++; if(rB !== 0) nB++;
+            if(rA === 1 && rB === 1) N_pp++; if(rA === -1 && rB === -1) N_mm++;
+            if(rA === 1 && rB === -1) N_pm++; if(rA === -1 && rB === 1) N_mp++;
+        }
+        mountA.userData.hub.rotation.z = savedHubA; mountB.userData.hub.rotation.z = savedHubB;
+        const valid = N_pp+N_mm+N_pm+N_mp;
+        return { E_valid: valid>0 ? (N_pp+N_mm-N_pm-N_mp)/valid : 0, E_all: (N_pp+N_mm-N_pm-N_mp)/total, valid: valid, nA: nA, nB: nB, total: total };
+    }
+
+    function finishRun() { config.isRunning = false; runBtn.classList.remove('active'); runBtn.innerText = "Run Sweep"; chshBtn.classList.remove('active'); chshBtn.innerText = "Run CHSH"; document.getElementById('angleB').disabled = false; }
+    function animate() { requestAnimationFrame(animate); updatePhysics(); controls.update(); renderer.render(scene, camera); }
+    
+    const ctx = document.getElementById('graph-canvas').getContext('2d');
+    function drawGraph() {
+        const w = 340; const h = 140; ctx.fillStyle = '#111'; ctx.fillRect(0,0,w,h);
+        ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(0, h/2); ctx.lineTo(w, h/2); ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke();
+        
+        if(graphData.length < 2 && config.graphMode !== 'valid') return;
+        
+        ctx.lineWidth = 2;
+        if (config.graphMode === 'rates') {
+            ctx.strokeStyle = '#00ffcc'; ctx.beginPath();
+            graphData.forEach((d,i) => { let px = (d.angle/180)*w, py = h - (d.stats.nA/d.stats.total)*h; if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); });
+            ctx.stroke();
+            ctx.strokeStyle = '#ffaa00'; ctx.beginPath();
+            graphData.forEach((d,i) => { let px = (d.angle/180)*w, py = h - (d.stats.nB/d.stats.total)*h; if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); });
+            ctx.stroke();
+        } else {
+            // Plot Data Line
+            if(graphData.length >= 2) {
+                ctx.strokeStyle = '#00ffcc'; ctx.beginPath();
+                graphData.forEach((d,i) => { 
+                    let val = (config.graphMode==='valid')?d.stats.E_valid:d.stats.E_all; 
+                    let px=(d.angle/180)*w, py=(h/2)-(val*(h/2)); 
+                    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); 
+                });
+                ctx.stroke();
+            }
+
+            // --- RESTORED THEORY CURVE ---
+            if (config.graphMode === 'valid') {
+                ctx.strokeStyle = '#444'; ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                for(let x=0; x<=w; x+=2) {
+                    const angle = (x/w) * Math.PI; 
+                    let theory = 0;
+                    const shift = THREE.MathUtils.degToRad(config.sourceOffset);
+                    const aliceShift = THREE.MathUtils.degToRad(config.angleA);
+                    
+                    if (config.particleType === 'd' || config.detectorType === 'd') {
+                        // Frequency doubling for D-block
+                        theory = Math.cos(4 * (angle - aliceShift) + (shift * 2));
+                    } else {
+                        // Standard P-block (Spin-1)
+                        theory = Math.cos(2 * (angle - aliceShift) + shift);
+                    }
+                    
+                    const y = (h/2) - (theory * (h/2));
+                    if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+    }
+
+    document.getElementById('particleGeo').addEventListener('change', (e) => { config.particleType = e.target.value; buildScene(); });
+    document.getElementById('detectorGeo').addEventListener('change', (e) => { config.detectorType = e.target.value; buildScene(); });
+    document.getElementById('angleA').addEventListener('input', (e) => { config.angleA = parseInt(e.target.value); document.getElementById('valA').innerText=config.angleA+"°"; drawGraph(); });
+    document.getElementById('angleB').addEventListener('input', (e) => { if(!config.isRunning) { config.angleB = parseInt(e.target.value); document.getElementById('valB').innerText=config.angleB+"°"; } });
+    document.getElementById('stiffnessSlider').addEventListener('input', (e) => { config.stiffness = parseInt(e.target.value)/100; document.getElementById('stiffnessVal').innerText=e.target.value+"%"; });
+    document.getElementById('noiseSlider').addEventListener('input', (e) => { config.noise = parseInt(e.target.value)/100; });
+    document.getElementById('readmeToggle').addEventListener('click', () => { let c = document.getElementById('readmeContent'); c.style.display = (c.style.display==='none')?'block':'none'; });
+    window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
+    buildScene(); animate();
+</script>
+</body>
+</html>
